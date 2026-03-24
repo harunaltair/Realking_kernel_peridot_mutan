@@ -20,7 +20,8 @@ jobs:
           repository: 'harunaltair/Realking_kernel_peridot_mutan'
           ref: 'main'
           fetch-depth: 1
-          # Submodules sengaja tidak diaktifkan untuk mencegah error 128
+          # Submodules dimatikan secara eksplisit agar tidak error 128
+          submodules: false
 
       # =========================================================
       # [2] CACHE TOOLCHAIN
@@ -79,15 +80,11 @@ jobs:
         run: |
           set -e
           echo "Membersihkan jejak submodule KSU yang rusak..."
-          
-          # Hapus sisa folder di root atau di drivers agar clone tidak bentrok
           rm -rf KernelSU-Next drivers/kernelsu drivers/kernelsu-next
           
-          echo "Mengunduh KernelSU-Next secara manual ke lokasi yang tepat..."
-          # Pastikan clone langsung ke folder 'drivers/kernelsu'
+          echo "Mengunduh KernelSU-Next secara manual..."
           git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next drivers/kernelsu
           
-          # Rapikan struktur folder jika KSU memiliki subfolder 'kernel'
           if [ -d "drivers/kernelsu/kernel" ]; then
             mv drivers/kernelsu/kernel/* drivers/kernelsu/
             rm -rf drivers/kernelsu/kernel
@@ -147,7 +144,7 @@ jobs:
           set_config CONFIG_UCLAMP_TASK y
           set_config CONFIG_UCLAMP_TASK_GROUP y
 
-          # [D] MEMORY MANAGEMENT (LMKD Android 16 Ready)
+          # [D] MEMORY MANAGEMENT
           set_config CONFIG_PSI y
           set_config CONFIG_MEMCG y
           set_config CONFIG_MEMCG_SWAP y
@@ -160,4 +157,126 @@ jobs:
           set_config CONFIG_TRANSPARENT_HUGEPAGE y
           set_config CONFIG_TRANSPARENT_HUGEPAGE_MADVISE y
 
-          # [E] I/O SCH
+          # [E] I/O SCHEDULER
+          set_config CONFIG_IOSCHED_BFQ y
+          set_config CONFIG_BFQ_GROUP_IOSCHED y
+          set_config CONFIG_DEFAULT_IOSCHED \"bfq\"
+          set_config CONFIG_MQ_IOSCHED_KYBER y
+
+          # [F] NETWORK
+          set_config CONFIG_TCP_CONG_BBR y
+          set_config CONFIG_DEFAULT_TCP_CONG \"bbr\"
+          set_config CONFIG_NET_SCH_FQ y
+          set_config CONFIG_NET_SCH_FQ_CODEL y
+          set_config CONFIG_WIREGUARD y
+
+          echo "✅ Semua config Mutan berhasil di-set"
+
+      # =========================================================
+      # [7] BUILD KERNEL
+      # =========================================================
+      - name: Build Kernel
+        run: |
+          set -e
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
+
+          rm -rf out && mkdir -p out
+
+          DEFCONFIG_BASENAME=$(basename "$TARGET_DEFCONFIG")
+
+          echo "========================================"
+          echo " Step 1: Generate base config"
+          echo "========================================"
+          make O=out ARCH=arm64 "$DEFCONFIG_BASENAME"
+
+          echo "========================================"
+          echo " Step 2: oldconfig (non-interactive)"
+          echo "========================================"
+          yes "" | make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang oldconfig
+
+          echo "========================================"
+          echo " Step 3: Main compilation"
+          echo "========================================"
+          make -j$(nproc --all) O=out        \
+            ARCH=arm64                        \
+            LLVM=1                            \
+            LLVM_IAS=1                        \
+            CC=clang                          \
+            CLANG_TRIPLE=aarch64-linux-gnu-   \
+            CROSS_COMPILE=aarch64-linux-gnu-  \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld                         \
+            AR=llvm-ar                        \
+            NM=llvm-nm                        \
+            OBJCOPY=llvm-objcopy              \
+            OBJDUMP=llvm-objdump              \
+            STRIP=llvm-strip                  \
+            Image.gz 2>&1 | tee build.log
+
+      # =========================================================
+      # [8] UPLOAD BUILD LOG
+      # =========================================================
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: error
+
+      # =========================================================
+      # [9] PACKAGE ANYKERNEL3
+      # =========================================================
+      - name: Package AnyKernel3
+        run: |
+          set -e
+
+          if [ ! -f out/arch/arm64/boot/Image.gz ]; then
+            echo "❌ FATAL ERROR: Image.gz tidak ditemukan! Kompilasi gagal."
+            exit 1
+          fi
+
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AK3
+          cp out/arch/arm64/boot/Image.gz AK3/
+          cd AK3
+
+          cat > anykernel.sh << 'EOF'
+          properties() { '
+          kernel.string=Mutan-Kernel-A16-Extreme
+          do.devicecheck=1
+          do.modules=0
+          do.systemless=1
+          do.cleanup=1
+          do.cleanuponabort=0
+          device.name1=peridot
+          supported.versions=14 - 16
+          '; }
+          block=boot;
+          is_slot_device=auto;
+          ramdisk_compression=auto;
+          patch_vbmeta_flag=auto;
+          no_magisk_check=1;
+          . tools/ak3-core.sh;
+          split_boot;
+          if [ -f "split_img/ramdisk.cpio" ]; then
+              unpack_ramdisk;
+              write_boot;
+          else
+              flash_boot;
+          fi
+          EOF
+
+          zip -r9 ../kernel-mutan.zip . -x '*.git*'
+          echo "✅ Package selesai: kernel-mutan.zip"
+
+      # =========================================================
+      # [10] UPLOAD KERNEL
+      # =========================================================
+      - name: Upload Kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mutan-Kernel-Release
+          path: kernel-mutan.zip
+          if-no-files-found: error
