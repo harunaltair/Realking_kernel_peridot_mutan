@@ -1,0 +1,183 @@
+name: Build Poco F6 Mutan Kernels (Extreme Edition)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile Mutan Extreme Kernel
+    runs-on: ubuntu-latest
+
+    steps:
+      # [1] CHECKOUT BASIS KODE (REALKING PERIDOT - UPSTREAM STABLE)
+      - name: Checkout Realking Source
+        uses: actions/checkout@v4
+        with:
+          repository: 'harunaltair/Realking_kernel_peridot_mutan'
+          ref: 'main'
+          fetch-depth: 1
+
+      # [2] CACHE & SETUP TOOLCHAIN (CLANG 15)
+      - name: Cache Toolchain
+        id: cache-toolchain
+        uses: actions/cache@v4
+        with:
+          path: toolchain
+          key: clang-15.0.7-20260208
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y bc bison build-essential flex git-core gnupg gperf \
+            libssl-dev libxml2-utils lzop python3 python-is-python3 zip zlib1g-dev \
+            llvm clang lld libelf-dev gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+
+      - name: Setup Toolchain
+        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p toolchain && cd toolchain
+          curl -L --retry 3 --retry-delay 5 -o clang.tar.gz "https://github.com/ZyCromerZ/Clang/releases/download/15.0.7-20260208-release/Clang-15.0.7-20260208.tar.gz"
+          tar -xf clang.tar.gz && rm -f clang.tar.gz
+
+      - name: Add Toolchain to PATH
+        run: echo "$GITHUB_WORKSPACE/toolchain/bin" >> $GITHUB_PATH
+
+      # [3] SETUP KERNELSU NEXT
+      - name: Setup KernelSU Next
+        run: |
+          set -e
+          rm -rf drivers/kernelsu-next drivers/kernelsu
+          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next drivers/kernelsu-next
+          
+          if [ -d "drivers/kernelsu-next/kernel" ]; then
+            mv drivers/kernelsu-next/kernel/* drivers/kernelsu-next/ && rm -rf drivers/kernelsu-next/kernel
+          fi
+
+          grep -q "kernelsu-next" drivers/Makefile || echo "obj-y += kernelsu-next/" >> drivers/Makefile
+          grep -q "kernelsu-next" drivers/Kconfig || sed -i '$i source "drivers/kernelsu-next/Kconfig"' drivers/Kconfig
+
+      # [4] MUTAN EXTREME CONFIGURATION (The "Brain" of Mutan Kernel)
+      - name: Kernel Config Setup
+        run: |
+          set -e
+          CONF="arch/arm64/configs/vendor/peridot_user_defconfig"
+          [ ! -f "$CONF" ] && CONF=$(find arch/arm64/configs/ -name "*peridot*" | head -n 1)
+          
+          echo "TARGET_DEFCONFIG=$(basename $CONF)" >> $GITHUB_ENV
+          
+          set_config() {
+            sed -i "/^$1[= ]/d" "$CONF" || true
+            sed -i "/^# $1 is not set/d" "$CONF" || true
+            echo "$1=$2" >> "$CONF"
+          }
+
+          echo "=== Applying Mutan Extreme Optimizations ==="
+
+          # [A] PERFORMANCE & EXTREME COMPILER (-O3)
+          sed -i 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y/g' "$CONF" || true
+          set_config CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 y
+          set_config CONFIG_HZ_300 y
+          set_config CONFIG_LTO_CLANG_THIN y
+          set_config CONFIG_WERROR n
+          set_config CONFIG_FRAME_WARN 4096
+
+          # [B] SCHEDULER: EAS & SCHEDUTIL (Efisien & Kencang)
+          set_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL y
+          set_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL y
+          set_config CONFIG_CPU_IDLE_GOV_TEO y
+          set_config CONFIG_ENERGY_MODEL y
+          set_config CONFIG_UCLAMP_TASK y
+          set_config CONFIG_UCLAMP_TASK_GROUP y
+
+          # [C] MEMORY MANAGEMENT (LMKD Android 16 Ready)
+          set_config CONFIG_PSI y
+          set_config CONFIG_MEMCG y
+          set_config CONFIG_MEMCG_SWAP y
+          set_config CONFIG_MEMCG_KMEM y
+          set_config CONFIG_CGROUP_CPUACCT y
+          set_config CONFIG_ZRAM y
+          set_config CONFIG_ZSMALLOC y
+          set_config CONFIG_ZSWAP y
+          set_config CONFIG_ZRAM_DEF_COMP_LZ4 y
+          set_config CONFIG_TRANSPARENT_HUGEPAGE y
+          set_config CONFIG_TRANSPARENT_HUGEPAGE_MADVISE y
+
+          # [D] I/O & NETWORK (Low Latency)
+          set_config CONFIG_IOSCHED_BFQ y
+          set_config CONFIG_BFQ_GROUP_IOSCHED y
+          set_config CONFIG_DEFAULT_IOSCHED \"bfq\"
+          set_config CONFIG_NET_SCH_FQ y
+          set_config CONFIG_NET_SCH_FQ_CODEL y
+          set_config CONFIG_TCP_CONG_BBR y
+          set_config CONFIG_DEFAULT_TCP_CONG \"bbr\"
+          set_config CONFIG_WIREGUARD y
+
+          # [E] LIGHTWEIGHT BUILD (Disable Heavy Tracing)
+          set_config CONFIG_FTRACE n
+          set_config CONFIG_FUNCTION_TRACER n
+          # Tracing tetap 'y' (implicit) tapi ftrace dimatikan untuk performa
+
+          # [F] ROOT & FILESYSTEM
+          set_config CONFIG_KSU y
+          set_config CONFIG_KSU_NEXT y
+          set_config CONFIG_OVERLAY_FS y
+          set_config CONFIG_TMPFS_XATTR y
+
+      # [5] BUILD PROCESS
+      - name: Build Kernel
+        run: |
+          set -e
+          export ARCH=arm64
+          export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
+          rm -rf out && mkdir -p out
+          
+          # 1. Generate config
+          make O=out ARCH=arm64 $TARGET_DEFCONFIG
+          
+          # 2. Sync config (Force default untuk opsi baru)
+          yes "" | make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang oldconfig
+          
+          # 3. Compile
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            Image.gz 2>&1 | tee build.log
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+
+      # [6] PACKAGING
+      - name: Package AnyKernel3
+        run: |
+          set -e
+          [ ! -f out/arch/arm64/boot/Image.gz ] && exit 1
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AK3
+          cp out/arch/arm64/boot/Image.gz AK3/
+          cd AK3
+          cat > anykernel.sh << 'EOF'
+          properties() { '
+          kernel.string=Mutan-Kernel-Extreme-O3
+          do.devicecheck=1
+          device.name1=peridot
+          supported.versions=14 - 16
+          '; }
+          block=boot; is_slot_device=auto; ramdisk_compression=auto; patch_vbmeta_flag=auto;
+          . tools/ak3-core.sh;
+          split_boot;
+          if [ -f "split_img/ramdisk.cpio" ]; then unpack_ramdisk; write_boot; else flash_boot; fi
+          EOF
+          zip -r9 ../kernel-mutan.zip . -x '*.git*'
+
+      - name: Upload Kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mutan-Kernel-Release
+          path: kernel-mutan.zip
