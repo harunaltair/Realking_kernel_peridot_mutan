@@ -12,7 +12,7 @@ jobs:
 
     steps:
       # =========================================================
-      # [1] CHECKOUT KERNEL SOURCE (DENGAN SUBMODULE)
+      # [1] CHECKOUT KERNEL SOURCE (BYPASS BROKEN SUBMODULES)
       # =========================================================
       - name: Checkout Mutan Source
         uses: actions/checkout@v4
@@ -20,8 +20,7 @@ jobs:
           repository: 'harunaltair/Realking_kernel_peridot_mutan'
           ref: 'main'
           fetch-depth: 1
-          # INI KUNCINYA: Otomatis mengunduh KernelSU bawaan Realking
-          submodules: 'recursive' 
+          # Submodules sengaja tidak diaktifkan untuk mencegah error 128
 
       # =========================================================
       # [2] CACHE TOOLCHAIN
@@ -74,9 +73,30 @@ jobs:
         run: echo "$GITHUB_WORKSPACE/toolchain/bin" >> $GITHUB_PATH
 
       # =========================================================
-      # [5] MUTAN EXTREME CONFIGURATION
-      # Catatan: Kita hapus step KSU manual karena sudah ter-handle 
-      # oleh submodules: 'recursive' di tahap Checkout.
+      # [5] SETUP KERNELSU NEXT (RESILIENT MANUAL CLONE)
+      # =========================================================
+      - name: Setup KernelSU Next
+        run: |
+          set -e
+          echo "Membersihkan jejak submodule KSU yang rusak..."
+          
+          # Hapus sisa folder di root atau di drivers agar clone tidak bentrok
+          rm -rf KernelSU-Next drivers/kernelsu drivers/kernelsu-next
+          
+          echo "Mengunduh KernelSU-Next secara manual ke lokasi yang tepat..."
+          # Pastikan clone langsung ke folder 'drivers/kernelsu'
+          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next drivers/kernelsu
+          
+          # Rapikan struktur folder jika KSU memiliki subfolder 'kernel'
+          if [ -d "drivers/kernelsu/kernel" ]; then
+            mv drivers/kernelsu/kernel/* drivers/kernelsu/
+            rm -rf drivers/kernelsu/kernel
+          fi
+          
+          echo "✅ KernelSU Next siap digunakan."
+
+      # =========================================================
+      # [6] MUTAN EXTREME CONFIGURATION
       # =========================================================
       - name: Kernel Config Setup
         run: |
@@ -112,7 +132,7 @@ jobs:
           set_config CONFIG_TRACING y
           set_config CONFIG_TRACE_CLOCK y
 
-          # [B] ROOT ACCESS — Memastikan flag KSU aktif untuk bawaan Realking
+          # [B] ROOT ACCESS
           set_config CONFIG_KSU y
           set_config CONFIG_KSU_NEXT y
           set_config CONFIG_OVERLAY_FS y
@@ -140,41 +160,4 @@ jobs:
           set_config CONFIG_TRANSPARENT_HUGEPAGE y
           set_config CONFIG_TRANSPARENT_HUGEPAGE_MADVISE y
 
-          # [E] I/O SCHEDULER
-          set_config CONFIG_IOSCHED_BFQ y
-          set_config CONFIG_BFQ_GROUP_IOSCHED y
-          set_config CONFIG_DEFAULT_IOSCHED \"bfq\"
-          set_config CONFIG_MQ_IOSCHED_KYBER y
-
-          # [F] NETWORK
-          set_config CONFIG_TCP_CONG_BBR y
-          set_config CONFIG_DEFAULT_TCP_CONG \"bbr\"
-          set_config CONFIG_NET_SCH_FQ y
-          set_config CONFIG_NET_SCH_FQ_CODEL y
-          set_config CONFIG_WIREGUARD y
-
-          echo "✅ Semua config Mutan berhasil di-set"
-
-      # =========================================================
-      # [6] BUILD KERNEL
-      # =========================================================
-      - name: Build Kernel
-        run: |
-          set -e
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
-
-          rm -rf out && mkdir -p out
-
-          DEFCONFIG_BASENAME=$(basename "$TARGET_DEFCONFIG")
-
-          echo "========================================"
-          echo " Step 1: Generate base config"
-          echo "========================================"
-          make O=out ARCH=arm64 "$DEFCONFIG_BASENAME"
-
-          echo "========================================"
-          echo " Step 2: oldconfig (non-interactive)"
-          echo "========================================"
-          yes "" | make O=out
+          # [E] I/O SCH
