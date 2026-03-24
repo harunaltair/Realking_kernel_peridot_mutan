@@ -20,18 +20,19 @@ jobs:
           repository: 'harunaltair/Realking_kernel_peridot_mutan'
           ref: 'main'
           fetch-depth: 1
-          # Submodules dimatikan secara eksplisit agar tidak error 128
+          # Submodules dimatikan secara eksplisit untuk stabilitas CI/CD
           submodules: false
 
       # =========================================================
-      # [2] CACHE TOOLCHAIN
+      # [2] CACHE TOOLCHAIN (UPGRADED TO CLANG 23)
       # =========================================================
       - name: Cache Toolchain
         id: cache-toolchain
         uses: actions/cache@v4
         with:
           path: toolchain
-          key: clang-15.0.7-20260208
+          # Key baru untuk memaksa sistem mengunduh Clang 23
+          key: clang-23.0.0git-20260130
 
       # =========================================================
       # [3] INSTALL BUILD DEPENDENCIES
@@ -47,15 +48,16 @@ jobs:
             binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
 
       # =========================================================
-      # [4] SETUP TOOLCHAIN
+      # [4] SETUP TOOLCHAIN (BLEEDING EDGE)
       # =========================================================
       - name: Setup Toolchain
         if: steps.cache-toolchain.outputs.cache-hit != 'true'
         run: |
           mkdir -p toolchain && cd toolchain
+          echo "Mengunduh ZyCromerZ Clang 23..."
           curl -L --retry 3 --retry-delay 5 \
             -o clang.tar.gz \
-            "https://github.com/ZyCromerZ/Clang/releases/download/15.0.7-20260208-release/Clang-15.0.7-20260208.tar.gz"
+            "https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260130-release/Clang-23.0.0git-20260130.tar.gz"
           tar -xf clang.tar.gz
           rm -f clang.tar.gz
 
