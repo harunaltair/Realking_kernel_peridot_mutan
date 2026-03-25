@@ -70,8 +70,8 @@ jobs:
           # 4. Inject Version Info
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Extreme-1.0.0"/g' out/.config
           
-          # 5. Final Compilation (Set ke -O2 untuk Stabilitas)
-          # Menambahkan target spesifik agar tidak error di DTC perangkat lain
+          # 5. Final Compilation (Dipecah agar lebih stabil)
+          # A. Build Kernel Image dulu
           make -j$(nproc --all) O=out \
               CC=clang \
               CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -79,7 +79,27 @@ jobs:
               LLVM=1 \
               LLVM_IAS=1 \
               KCFLAGS="-O2 -march=armv9.2-a+crypto+dotprod -pipe" \
-              Image.gz dtbs dtbo.img
+              Image
+
+          # B. Build DTBs (Fokus ke vendor Xiaomi/Qualcomm)
+          make -j$(nproc --all) O=out \
+              CC=clang \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
+              LLVM=1 \
+              LLVM_IAS=1 \
+              KCFLAGS="-O2 -march=armv9.2-a+crypto+dotprod -pipe" \
+              dtbs
+
+          # C. Build DTBO Image
+          make -j$(nproc --all) O=out \
+              CC=clang \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
+              LLVM=1 \
+              LLVM_IAS=1 \
+              KCFLAGS="-O2 -march=armv9.2-a+crypto+dotprod -pipe" \
+              dtbo.img
 
       - name: Package with Safety Fallback
         run: |
