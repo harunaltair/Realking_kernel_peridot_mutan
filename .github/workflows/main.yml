@@ -22,7 +22,7 @@ jobs:
           sudo apt install -y bc bison build-essential flex git git-lfs zip \
           libssl-dev libncurses5-dev libncursesw5-dev libelf-dev binutils-aarch64-linux-gnu pahole
 
-      -- name: Setup ZyCromerZ Clang (19.1.7)
+      - name: Setup ZyCromerZ Clang (19.1.7)
         run: |
           mkdir clang
           cd clang
