@@ -38,14 +38,15 @@ jobs:
           export KBUILD_BUILD_USER="lightbulb"
           export KBUILD_BUILD_HOST="Mutan-BuildServer"
 
-          # FIX: Hapus referensi KernelSU yang bikin error
+          # FIX 1: Hapus referensi KernelSU yang bikin error
           sed -i '/kernelsu/d' drivers/Kconfig
           sed -i '/kernelsu/d' drivers/Makefile
+
+          # 1. Initialize Defconfig (Disesuaikan dengan jalur yang kamu temukan)
+          # Karena file ada di arch/arm64/configs/peridot_defconfig
+          make O=out peridot_defconfig
           
-          # 1. Initialize Defconfig
-          make O=out vendor/peridot_defconfig
-          
-          # 2. Extreme Optimizer & Compatibility (EROFS, BBG, Wild Patches)
+          # 2. Extreme Optimizer & Compatibility
           scripts/config --objtree out --enable CONFIG_EROFS_FS
           scripts/config --objtree out --enable CONFIG_EROFS_FS_ZIP
           scripts/config --objtree out --enable CONFIG_EROFS_FS_XATTR
@@ -61,6 +62,8 @@ jobs:
           scripts/config --objtree out --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
           scripts/config --objtree out --enable CONFIG_NET_SCH_FQ_CODEL
           scripts/config --objtree out --enable CONFIG_WIREGUARD
+          
+          # Zero Overhead
           scripts/config --objtree out --disable CONFIG_KASAN
           scripts/config --objtree out --disable CONFIG_UBSAN
           scripts/config --objtree out --disable CONFIG_KCSAN
