@@ -37,6 +37,10 @@ jobs:
           export SUBARCH=arm64
           export KBUILD_BUILD_USER="lightbulb"
           export KBUILD_BUILD_HOST="Mutan-BuildServer"
+
+          # FIX: Hapus referensi KernelSU yang bikin error
+          sed -i '/kernelsu/d' drivers/Kconfig
+          sed -i '/kernelsu/d' drivers/Makefile
           
           # 1. Initialize Defconfig
           make O=out vendor/peridot_defconfig
