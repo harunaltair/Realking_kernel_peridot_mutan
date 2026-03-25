@@ -22,12 +22,13 @@ jobs:
           sudo apt install -y bc bison build-essential flex git git-lfs zip \
           libssl-dev libncurses5-dev libncursesw5-dev libelf-dev binutils-aarch64-linux-gnu pahole
 
-      - name: Setup ZyCromerZ Clang (15.0.7-20260208)
+      - name: Setup Proton Clang
         run: |
           mkdir clang
           cd clang
-          curl -LO https://github.com/ZyCromerZ/Clang/releases/download/15.0.7-20260208-release/Clang-15.0.7-20260208.tar.gz
-          tar -xf *.tar.gz
+          # Menggunakan Proton Clang dari kdrag0n: Sangat stabil & kencang
+          curl -LO https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz
+          tar -xf master.tar.gz --strip-components=1
           echo "$(pwd)/bin" >> $GITHUB_PATH
 
       - name: Build Mutan Kernel
@@ -37,7 +38,7 @@ jobs:
           export KBUILD_BUILD_USER="lightbulb"
           export KBUILD_BUILD_HOST="Mutan-BuildServer"
 
-          # 1. Membersihkan sisa-sisa KernelSU
+          # 1. Bersihkan sisa-sisa KernelSU
           git rm -rf --cached KernelSU-Next || true
           sed -i '/kernelsu/d' drivers/Kconfig
           sed -i '/kernelsu/d' drivers/Makefile
@@ -45,7 +46,7 @@ jobs:
           # 2. Initialize Defconfig
           make O=out peridot_defconfig
           
-          # 3. Optimizer & Compatibility (EROFS Wajib untuk HyperOS/A16)
+          # 3. Optimizer & Compatibility
           scripts/config --file out/.config --enable CONFIG_EROFS_FS
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_ZIP
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_XATTR
@@ -61,8 +62,6 @@ jobs:
           scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
           scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
           scripts/config --file out/.config --enable CONFIG_WIREGUARD
-          
-          # Zero Overhead
           scripts/config --file out/.config --disable CONFIG_KASAN
           scripts/config --file out/.config --disable CONFIG_UBSAN
           scripts/config --file out/.config --disable CONFIG_KCSAN
@@ -70,35 +69,31 @@ jobs:
           # 4. Inject Version Info
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Extreme-1.0.0"/g' out/.config
           
-          # 5. Final Compilation (Dipecah agar lebih stabil)
-          # A. Build Kernel Image dulu
+          # 5. Final Compilation (Proton Clang Style)
+          # A. Build Kernel Image
           make -j$(nproc --all) O=out \
               CC=clang \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
               LLVM=1 \
               LLVM_IAS=1 \
-              KCFLAGS="-O2 -march=armv9.2-a+crypto+dotprod -pipe" \
+              KCFLAGS="-O2 -pipe" \
               Image
 
-          # B. Build DTBs (Fokus ke vendor Xiaomi/Qualcomm)
+          # B. Build DTBs
           make -j$(nproc --all) O=out \
               CC=clang \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE=aarch64-linux-gnu- \
               LLVM=1 \
               LLVM_IAS=1 \
-              KCFLAGS="-O2 -march=armv9.2-a+crypto+dotprod -pipe" \
               dtbs
 
-          # C. Build DTBO Image
+          # C. Build DTBO
           make -j$(nproc --all) O=out \
               CC=clang \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-android- \
+              CROSS_COMPILE=aarch64-linux-gnu- \
               LLVM=1 \
               LLVM_IAS=1 \
-              KCFLAGS="-O2 -march=armv9.2-a+crypto+dotprod -pipe" \
               dtbo.img
 
       - name: Package with Safety Fallback
