@@ -26,7 +26,6 @@ jobs:
         run: |
           mkdir clang
           cd clang
-          # Link yang sudah dikoreksi sesuai instruksi kamu
           curl -LO https://github.com/ZyCromerZ/Clang/releases/download/15.0.7-20260208-release/Clang-15.0.7-20260208.tar.gz
           tar -xf *.tar.gz
           echo "$(pwd)/bin" >> $GITHUB_PATH
@@ -38,7 +37,7 @@ jobs:
           export KBUILD_BUILD_USER="lightbulb"
           export KBUILD_BUILD_HOST="Mutan-BuildServer"
 
-          # 1. Membersihkan sisa-sisa KernelSU agar git tidak error
+          # 1. Membersihkan sisa-sisa KernelSU
           git rm -rf --cached KernelSU-Next || true
           sed -i '/kernelsu/d' drivers/Kconfig
           sed -i '/kernelsu/d' drivers/Makefile
@@ -46,8 +45,7 @@ jobs:
           # 2. Initialize Defconfig
           make O=out peridot_defconfig
           
-          # 3. Extreme Optimizer & Compatibility
-          # Kita ganti --objtree dengan --file out/.config
+          # 3. Optimizer & Compatibility (EROFS Wajib untuk HyperOS/A16)
           scripts/config --file out/.config --enable CONFIG_EROFS_FS
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_ZIP
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_XATTR
@@ -64,7 +62,7 @@ jobs:
           scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
           scripts/config --file out/.config --enable CONFIG_WIREGUARD
           
-          # Zero Overhead (Disable Sanitizers)
+          # Zero Overhead
           scripts/config --file out/.config --disable CONFIG_KASAN
           scripts/config --file out/.config --disable CONFIG_UBSAN
           scripts/config --file out/.config --disable CONFIG_KCSAN
@@ -72,14 +70,16 @@ jobs:
           # 4. Inject Version Info
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Extreme-1.0.0"/g' out/.config
           
-          # 5. Final Compilation
+          # 5. Final Compilation (Set ke -O2 untuk Stabilitas)
+          # Menambahkan target spesifik agar tidak error di DTC perangkat lain
           make -j$(nproc --all) O=out \
               CC=clang \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               CROSS_COMPILE=aarch64-linux-android- \
               LLVM=1 \
               LLVM_IAS=1 \
-              KCFLAGS="-O3 -march=armv9.2-a+crypto+dotprod -pipe"
+              KCFLAGS="-O2 -march=armv9.2-a+crypto+dotprod -pipe" \
+              Image.gz dtbs dtbo.img
 
       - name: Package with Safety Fallback
         run: |
@@ -107,7 +107,8 @@ jobs:
           flash_boot;
           EOF
           
-          cp ../out/arch/arm64/boot/Image .
+          # Memastikan file hasil build disalin dengan benar untuk packaging
+          cp ../out/arch/arm64/boot/Image.gz . || cp ../out/arch/arm64/boot/Image .
           find ../out/arch/arm64/boot/dts/vendor/xiaomi/ -name "*.dtb" -exec cp {} . \;
           if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
               cp ../out/arch/arm64/boot/dtbo.img .
@@ -124,6 +125,6 @@ jobs:
           body: |
             **Mutan-Kernel-A16-Extreme for Peridot**
             - Compiler: ZyCromerZ Clang 15.0.7
-            - Optimizer: BBG, EROFS, Wild Patches
+            - Optimizer: -O2 (Balanced), BBG, EROFS, Wild Patches
             - Fallback: /sdcard/Mutan_Original_Backup.img
           files: "*.zip"
