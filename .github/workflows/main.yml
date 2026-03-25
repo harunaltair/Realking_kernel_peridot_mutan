@@ -22,14 +22,12 @@ jobs:
           sudo apt install -y bc bison build-essential flex git git-lfs zip \
           libssl-dev libncurses5-dev libncursesw5-dev libelf-dev binutils-aarch64-linux-gnu pahole
 
-      - name: Setup ZyCromerZ Clang (23.0.0-git)
+      -- name: Setup ZyCromerZ Clang (19.1.7)
         run: |
           mkdir clang
           cd clang
-          # Menggunakan Clang 23 terbaru untuk optimasi Android 16 (ARMv9.2)
-          curl -LO https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260130-release/Clang-23.0.0git-20260130.tar.gz
+          curl -LO https://github.com/ZyCromerZ/Clang/releases/download/19.1.7-20260205-release/Clang-19.1.7-20260205.tar.gz
           tar -xf *.tar.gz
-          # Masukkan bin ke path paling depan agar diprioritaskan
           echo "$(pwd)/bin" >> $GITHUB_PATH
 
       - name: Build Mutan Kernel
