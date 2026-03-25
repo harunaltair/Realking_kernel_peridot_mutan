@@ -22,13 +22,14 @@ jobs:
           sudo apt install -y bc bison build-essential flex git git-lfs zip \
           libssl-dev libncurses5-dev libncursesw5-dev libelf-dev binutils-aarch64-linux-gnu pahole
 
-      - name: Setup Proton Clang
+      - name: Setup ZyCromerZ Clang (23.0.0-git)
         run: |
           mkdir clang
           cd clang
-          # Menggunakan Proton Clang dari kdrag0n: Sangat stabil & kencang
-          curl -LO https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.tar.gz
-          tar -xf master.tar.gz --strip-components=1
+          # Menggunakan Clang 23 terbaru untuk optimasi Android 16 (ARMv9.2)
+          curl -LO https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260130-release/Clang-23.0.0git-20260130.tar.gz
+          tar -xf *.tar.gz
+          # Masukkan bin ke path paling depan agar diprioritaskan
           echo "$(pwd)/bin" >> $GITHUB_PATH
 
       - name: Build Mutan Kernel
@@ -38,7 +39,7 @@ jobs:
           export KBUILD_BUILD_USER="lightbulb"
           export KBUILD_BUILD_HOST="Mutan-BuildServer"
 
-          # 1. Bersihkan sisa-sisa KernelSU
+          # 1. Bersihkan sisa-sisa KernelSU agar git tidak error
           git rm -rf --cached KernelSU-Next || true
           sed -i '/kernelsu/d' drivers/Kconfig
           sed -i '/kernelsu/d' drivers/Makefile
@@ -46,7 +47,7 @@ jobs:
           # 2. Initialize Defconfig
           make O=out peridot_defconfig
           
-          # 3. Optimizer & Compatibility
+          # 3. Android 16 & HyperOS 3 Compatibility (EROFS & Performance)
           scripts/config --file out/.config --enable CONFIG_EROFS_FS
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_ZIP
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_XATTR
@@ -62,6 +63,8 @@ jobs:
           scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
           scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
           scripts/config --file out/.config --enable CONFIG_WIREGUARD
+          
+          # Zero Overhead
           scripts/config --file out/.config --disable CONFIG_KASAN
           scripts/config --file out/.config --disable CONFIG_UBSAN
           scripts/config --file out/.config --disable CONFIG_KCSAN
@@ -69,12 +72,14 @@ jobs:
           # 4. Inject Version Info
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Extreme-1.0.0"/g' out/.config
           
-          # 5. Final Compilation (Proton Clang Style)
+          # 5. Final Compilation (Dipecah agar stabil)
+          # Gunakan -O2 untuk kestabilan harian di HyperOS 3
+          
           # A. Build Kernel Image
           make -j$(nproc --all) O=out \
               CC=clang \
-              CROSS_COMPILE=aarch64-linux-gnu- \
-              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
               LLVM=1 \
               LLVM_IAS=1 \
               KCFLAGS="-O2 -pipe" \
@@ -83,7 +88,8 @@ jobs:
           # B. Build DTBs
           make -j$(nproc --all) O=out \
               CC=clang \
-              CROSS_COMPILE=aarch64-linux-gnu- \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
               LLVM=1 \
               LLVM_IAS=1 \
               dtbs
@@ -91,7 +97,8 @@ jobs:
           # C. Build DTBO
           make -j$(nproc --all) O=out \
               CC=clang \
-              CROSS_COMPILE=aarch64-linux-gnu- \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
               LLVM=1 \
               LLVM_IAS=1 \
               dtbo.img
