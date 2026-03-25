@@ -22,11 +22,12 @@ jobs:
           sudo apt install -y bc bison build-essential flex git git-lfs zip \
           libssl-dev libncurses5-dev libncursesw5-dev libelf-dev binutils-aarch64-linux-gnu pahole
 
-      - name: Setup ZyCromerZ Clang (19.1.7)
+      - name: Setup ZyCromerZ Clang (20.0.0-git)
         run: |
           mkdir clang
           cd clang
-          curl -LO https://github.com/ZyCromerZ/Clang/releases/download/19.1.7-20260205-release/Clang-19.1.7-20260205.tar.gz
+          # Menggunakan rilis Jan 2025 yang stabil untuk SM8635
+          curl -LO https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20250129-release/Clang-20.0.0git-20250129.tar.gz
           tar -xf *.tar.gz
           echo "$(pwd)/bin" >> $GITHUB_PATH
 
@@ -45,22 +46,18 @@ jobs:
           # 2. Initialize Defconfig
           make O=out peridot_defconfig
           
-          # 3. Android 16 & HyperOS 3 Compatibility (EROFS & Performance)
+          # 3. Android 16 & HyperOS 3 Essentials (Mahiru Optimized)
           scripts/config --file out/.config --enable CONFIG_EROFS_FS
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_ZIP
           scripts/config --file out/.config --enable CONFIG_EROFS_FS_XATTR
           scripts/config --file out/.config --enable CONFIG_TMPFS_XATTR
           scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
           scripts/config --file out/.config --enable CONFIG_ZRAM
-          scripts/config --file out/.config --enable CONFIG_ZSMALLOC
           scripts/config --file out/.config --enable CONFIG_PSI
           scripts/config --file out/.config --enable CONFIG_MEMCG
           scripts/config --file out/.config --set-val CONFIG_HZ 300
-          scripts/config --file out/.config --enable CONFIG_SCHED_AUTOGROUP
           scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
           scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
-          scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
-          scripts/config --file out/.config --enable CONFIG_WIREGUARD
           
           # Zero Overhead
           scripts/config --file out/.config --disable CONFIG_KASAN
@@ -68,73 +65,35 @@ jobs:
           scripts/config --file out/.config --disable CONFIG_KCSAN
           
           # 4. Inject Version Info
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Extreme-1.0.0"/g' out/.config
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Mahiru-Style"/g' out/.config
           
-          # 5. Final Compilation (Dipecah agar stabil)
-          # Gunakan -O2 untuk kestabilan harian di HyperOS 3
-          
-          # A. Build Kernel Image
+          # 5. Final Compilation (Mahiru Style: One Line Build)
+          # Menggunakan LLVM=1 secara penuh untuk konsistensi toolchain
           make -j$(nproc --all) O=out \
+              LLVM=1 \
+              LLVM_IAS=1 \
               CC=clang \
               CLANG_TRIPLE=aarch64-linux-gnu- \
               CROSS_COMPILE=aarch64-linux-android- \
-              LLVM=1 \
-              LLVM_IAS=1 \
-              KCFLAGS="-O2 -pipe" \
-              Image
+              KCFLAGS="-O2 -pipe -Wno-error" \
+              Image.gz dtbs dtbo.img
 
-          # B. Build DTBs
-          make -j$(nproc --all) O=out \
-              CC=clang \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-android- \
-              LLVM=1 \
-              LLVM_IAS=1 \
-              dtbs
-
-          # C. Build DTBO
-          make -j$(nproc --all) O=out \
-              CC=clang \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-android- \
-              LLVM=1 \
-              LLVM_IAS=1 \
-              dtbo.img
-
-      - name: Package with Safety Fallback
+      - name: Package with AnyKernel3
         run: |
           git clone https://github.com/osm0sis/AnyKernel3.git -b master
           cd AnyKernel3
           
-          cat << 'EOF' > anykernel.sh
-          properties() { '
-          kernel.string=Mutan-Kernel-A16-Extreme (Poco F6 / Peridot)
-          do.devicecheck=1
-          do.modules=0
-          do.systemless=1
-          do.cleanup=1
-          do.cleanuponabort=0
-          device.name1=peridot
-          supported.versions=14 - 16
-          '; }
-          block=boot
-          is_slot_device=auto
-          . tools/ak3-core.sh
-          ui_print "- Backup kernel lama ke /sdcard/Mutan_Original_Backup.img"
-          dump_boot; 
-          cp $split_img/boot.img /sdcard/Mutan_Original_Backup.img || ui_print "! Gagal buat backup"
-          split_boot;
-          flash_boot;
-          EOF
+          # Update anykernel.sh secara otomatis
+          sed -i 's/kernel.string=.*/kernel.string=Mutan-Kernel-A16-Extreme (Poco F6)/g' anykernel.sh
+          sed -i 's/device.name1=.*/device.name1=peridot/g' anykernel.sh
           
-          # Memastikan file hasil build disalin dengan benar untuk packaging
-          cp ../out/arch/arm64/boot/Image.gz . || cp ../out/arch/arm64/boot/Image .
+          # Ambil hasil build (Mahiru Style menggunakan Image.gz)
+          cp ../out/arch/arm64/boot/Image.gz .
+          cp ../out/arch/arm64/boot/dtbo.img .
           find ../out/arch/arm64/boot/dts/vendor/xiaomi/ -name "*.dtb" -exec cp {} . \;
-          if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
-              cp ../out/arch/arm64/boot/dtbo.img .
-          fi
           
-          zip -r9 ../Mutan-Kernel-$(date +%Y%m%d-%H%M).zip *
+          # Buat ZIP
+          zip -r9 ../Mutan-Kernel-Peridot-A16-$(date +%Y%m%d-%H%M).zip *
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -143,8 +102,9 @@ jobs:
           tag_name: v1.0.0-$(date +%Y%m%d-%H%M)
           name: Mutan-Kernel-A16-Extreme (Poco F6)
           body: |
-            **Mutan-Kernel-A16-Extreme for Peridot**
-            - Compiler: ZyCromerZ Clang 15.0.7
-            - Optimizer: -O2 (Balanced), BBG, EROFS, Wild Patches
-            - Fallback: /sdcard/Mutan_Original_Backup.img
+            **Mutan-Kernel-A16-Extreme (Mahiru Style)**
+            - Device: Poco F6 (Peridot)
+            - Compiler: ZyCromerZ Clang 20.0.0-git
+            - Target: Android 16 / HyperOS 3
+            - Features: EROFS, TCP BBR, -O2 Optimized
           files: "*.zip"
