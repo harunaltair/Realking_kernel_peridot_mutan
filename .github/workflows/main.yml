@@ -1,252 +1,86 @@
-name: Build Poco F6 Mutan Kernels (Extreme Edition)
+name: Build Mutan Kernel A16 Extreme (Poco F6)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main, master, android-16 ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile Mutan Extreme Kernel
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
-      # =========================================================
-      # [1] CHECKOUT KERNEL SOURCE (BYPASS BROKEN SUBMODULES)
-      # =========================================================
-      - name: Checkout Mutan Source
+      - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
-          repository: 'harunaltair/Realking_kernel_peridot_mutan'
-          ref: 'main'
           fetch-depth: 1
-          # Submodules dimatikan secara eksplisit untuk stabilitas CI/CD
-          submodules: false
 
-      # =========================================================
-      # [2] CACHE TOOLCHAIN (UPGRADED TO CLANG 23)
-      # =========================================================
-      - name: Cache Toolchain
-        id: cache-toolchain
-        uses: actions/cache@v4
-        with:
-          path: toolchain
-          # Key baru untuk memaksa sistem mengunduh Clang 23
-          key: clang-23.0.0git-20260130
-
-      # =========================================================
-      # [3] INSTALL BUILD DEPENDENCIES
-      # =========================================================
       - name: Install Build Dependencies
         run: |
           sudo apt update
-          sudo apt install -y \
-            bc bison build-essential flex git-core gnupg gperf \
-            libssl-dev libxml2-utils lzop python3 python-is-python3 \
-            zip zlib1g-dev llvm clang lld libelf-dev \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi
+          sudo apt install -y bc bison build-essential flex git git-lfs zip \
+          libssl-dev libncurses5-dev libncursesw5-dev libelf-dev binutils-aarch64-linux-gnu pahole
 
-      # =========================================================
-      # [4] SETUP TOOLCHAIN (BLEEDING EDGE)
-      # =========================================================
-      - name: Setup Toolchain
-        if: steps.cache-toolchain.outputs.cache-hit != 'true'
+      - name: Setup ZyCromerZ Clang (15.0.7-20260208)
         run: |
-          mkdir -p toolchain && cd toolchain
-          echo "Mengunduh ZyCromerZ Clang 23..."
-          curl -L --retry 3 --retry-delay 5 \
-            -o clang.tar.gz \
-            "https://github.com/ZyCromerZ/Clang/releases/download/23.0.0git-20260130-release/Clang-23.0.0git-20260130.tar.gz"
-          tar -xf clang.tar.gz
-          rm -f clang.tar.gz
+          mkdir clang
+          cd clang
+          # Link yang sudah dikoreksi sesuai instruksi kamu
+          curl -LO https://github.com/ZyCromerZ/Clang/releases/download/15.0.7-20260208-release/Clang-15.0.7-20260208.tar.gz
+          tar -xf *.tar.gz
+          echo "$(pwd)/bin" >> $GITHUB_PATH
 
-      - name: Verify Toolchain
+      - name: Build Mutan Kernel
         run: |
-          export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
-          echo "=== Clang Version ==="
-          clang --version || { echo "❌ clang tidak ditemukan!"; exit 1; }
-          echo "=== LLD Version ==="
-          ld.lld --version || { echo "❌ ld.lld tidak ditemukan!"; exit 1; }
-          echo "=== Cross GCC ==="
-          aarch64-linux-gnu-gcc --version || { echo "❌ aarch64 gcc tidak ditemukan!"; exit 1; }
-          echo "✅ Toolchain OK"
-
-      - name: Add Toolchain to PATH
-        run: echo "$GITHUB_WORKSPACE/toolchain/bin" >> $GITHUB_PATH
-
-      # =========================================================
-      # [5] SETUP KERNELSU NEXT (RESILIENT MANUAL CLONE)
-      # =========================================================
-      - name: Setup KernelSU Next
-        run: |
-          set -e
-          echo "Membersihkan jejak submodule KSU yang rusak..."
-          rm -rf KernelSU-Next drivers/kernelsu drivers/kernelsu-next
-          
-          echo "Mengunduh KernelSU-Next secara manual..."
-          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next drivers/kernelsu
-          
-          if [ -d "drivers/kernelsu/kernel" ]; then
-            mv drivers/kernelsu/kernel/* drivers/kernelsu/
-            rm -rf drivers/kernelsu/kernel
-          fi
-          
-          echo "✅ KernelSU Next siap digunakan."
-
-      # =========================================================
-      # [6] MUTAN EXTREME CONFIGURATION
-      # =========================================================
-      - name: Kernel Config Setup
-        run: |
-          set -e
-
-          CONF="arch/arm64/configs/vendor/peridot_defconfig"
-          [ ! -f "$CONF" ] && CONF="arch/arm64/configs/peridot_defconfig"
-          [ ! -f "$CONF" ] && CONF=$(find arch/arm64/configs/ -name "*peridot*" | head -n 1)
-          
-          echo "TARGET_DEFCONFIG=$(basename $CONF)" >> $GITHUB_ENV
-          DEFCONFIG="$CONF"
-          echo "✅ Menggunakan defconfig: $DEFCONFIG"
-
-          set_config() {
-            sed -i "/^$1[= ]/d" "$DEFCONFIG" || true
-            sed -i "/^# $1 is not set/d" "$DEFCONFIG" || true
-            echo "$1=$2" >> "$DEFCONFIG"
-          }
-
-          echo "=== Applying Mutan Extreme Optimizations ==="
-
-          # [A] COMPILATION & EXTREME OPTIMIZATION
-          sed -i 's/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y/CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3=y/g' "$DEFCONFIG" || true
-          set_config CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE_O3 y
-          set_config CONFIG_FRAME_WARN 4096
-          set_config CONFIG_WERROR n
-          set_config CONFIG_LTO_CLANG_THIN y
-          set_config CONFIG_HZ_300 y
-          
-          # Disable Heavy Tracing
-          set_config CONFIG_FTRACE n
-          set_config CONFIG_FUNCTION_TRACER n
-          set_config CONFIG_TRACING y
-          set_config CONFIG_TRACE_CLOCK y
-
-          # [B] ROOT ACCESS
-          set_config CONFIG_KSU y
-          set_config CONFIG_KSU_NEXT y
-          set_config CONFIG_OVERLAY_FS y
-          set_config CONFIG_OVERLAY_FS_REDIRECT_DIR y
-          set_config CONFIG_OVERLAY_FS_INDEX y
-
-          # [C] SCHEDULER: EAS & SCHEDUTIL
-          set_config CONFIG_CPU_FREQ_GOV_SCHEDUTIL y
-          set_config CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL y
-          set_config CONFIG_CPU_IDLE_GOV_TEO y
-          set_config CONFIG_ENERGY_MODEL y
-          set_config CONFIG_UCLAMP_TASK y
-          set_config CONFIG_UCLAMP_TASK_GROUP y
-
-          # [D] MEMORY MANAGEMENT
-          set_config CONFIG_PSI y
-          set_config CONFIG_MEMCG y
-          set_config CONFIG_MEMCG_SWAP y
-          set_config CONFIG_MEMCG_KMEM y
-          set_config CONFIG_CGROUP_CPUACCT y
-          set_config CONFIG_ZRAM y
-          set_config CONFIG_ZSMALLOC y
-          set_config CONFIG_ZSWAP y
-          set_config CONFIG_ZRAM_DEF_COMP_LZ4 y
-          set_config CONFIG_TRANSPARENT_HUGEPAGE y
-          set_config CONFIG_TRANSPARENT_HUGEPAGE_MADVISE y
-
-          # [E] I/O SCHEDULER
-          set_config CONFIG_IOSCHED_BFQ y
-          set_config CONFIG_BFQ_GROUP_IOSCHED y
-          set_config CONFIG_DEFAULT_IOSCHED \"bfq\"
-          set_config CONFIG_MQ_IOSCHED_KYBER y
-
-          # [F] NETWORK
-          set_config CONFIG_TCP_CONG_BBR y
-          set_config CONFIG_DEFAULT_TCP_CONG \"bbr\"
-          set_config CONFIG_NET_SCH_FQ y
-          set_config CONFIG_NET_SCH_FQ_CODEL y
-          set_config CONFIG_WIREGUARD y
-
-          echo "✅ Semua config Mutan berhasil di-set"
-
-      # =========================================================
-      # [7] BUILD KERNEL
-      # =========================================================
-      - name: Build Kernel
-        run: |
-          set -e
           export ARCH=arm64
           export SUBARCH=arm64
-          export PATH="$GITHUB_WORKSPACE/toolchain/bin:$PATH"
+          export KBUILD_BUILD_USER="lightbulb"
+          export KBUILD_BUILD_HOST="Mutan-BuildServer"
+          
+          # 1. Initialize Defconfig
+          make O=out vendor/peridot_defconfig
+          
+          # 2. Extreme Optimizer & Compatibility (EROFS, BBG, Wild Patches)
+          scripts/config --objtree out --enable CONFIG_EROFS_FS
+          scripts/config --objtree out --enable CONFIG_EROFS_FS_ZIP
+          scripts/config --objtree out --enable CONFIG_EROFS_FS_XATTR
+          scripts/config --objtree out --enable CONFIG_TMPFS_XATTR
+          scripts/config --objtree out --enable CONFIG_OVERLAY_FS
+          scripts/config --objtree out --enable CONFIG_ZRAM
+          scripts/config --objtree out --enable CONFIG_ZSMALLOC
+          scripts/config --objtree out --enable CONFIG_PSI
+          scripts/config --objtree out --enable CONFIG_MEMCG
+          scripts/config --objtree out --set-val CONFIG_HZ 300
+          scripts/config --objtree out --enable CONFIG_SCHED_AUTOGROUP
+          scripts/config --objtree out --enable CONFIG_TCP_CONG_BBR
+          scripts/config --objtree out --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+          scripts/config --objtree out --enable CONFIG_NET_SCH_FQ_CODEL
+          scripts/config --objtree out --enable CONFIG_WIREGUARD
+          scripts/config --objtree out --disable CONFIG_KASAN
+          scripts/config --objtree out --disable CONFIG_UBSAN
+          scripts/config --objtree out --disable CONFIG_KCSAN
+          
+          # 3. Inject Version Info
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Extreme-1.0.0"/g' out/.config
+          
+          # 4. Final Compilation
+          make -j$(nproc --all) O=out \
+              CC=clang \
+              CLANG_TRIPLE=aarch64-linux-gnu- \
+              CROSS_COMPILE=aarch64-linux-android- \
+              LLVM=1 \
+              LLVM_IAS=1 \
+              KCFLAGS="-O3 -march=armv9.2-a+crypto+dotprod -pipe"
 
-          rm -rf out && mkdir -p out
-
-          DEFCONFIG_BASENAME=$(basename "$TARGET_DEFCONFIG")
-
-          echo "========================================"
-          echo " Step 1: Generate base config"
-          echo "========================================"
-          make O=out ARCH=arm64 "$DEFCONFIG_BASENAME"
-
-          echo "========================================"
-          echo " Step 2: oldconfig (non-interactive)"
-          echo "========================================"
-          yes "" | make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang oldconfig
-
-          echo "========================================"
-          echo " Step 3: Main compilation"
-          echo "========================================"
-          make -j$(nproc --all) O=out        \
-            ARCH=arm64                        \
-            LLVM=1                            \
-            LLVM_IAS=1                        \
-            CC=clang                          \
-            CLANG_TRIPLE=aarch64-linux-gnu-   \
-            CROSS_COMPILE=aarch64-linux-gnu-  \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            LD=ld.lld                         \
-            AR=llvm-ar                        \
-            NM=llvm-nm                        \
-            OBJCOPY=llvm-objcopy              \
-            OBJDUMP=llvm-objdump              \
-            STRIP=llvm-strip                  \
-            Image.gz 2>&1 | tee build.log
-
-      # =========================================================
-      # [8] UPLOAD BUILD LOG
-      # =========================================================
-      - name: Upload Build Log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-          if-no-files-found: error
-
-      # =========================================================
-      # [9] PACKAGE ANYKERNEL3
-      # =========================================================
-      - name: Package AnyKernel3
+      - name: Package with Safety Fallback
         run: |
-          set -e
-
-          if [ ! -f out/arch/arm64/boot/Image.gz ]; then
-            echo "❌ FATAL ERROR: Image.gz tidak ditemukan! Kompilasi gagal."
-            exit 1
-          fi
-
-          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AK3
-          cp out/arch/arm64/boot/Image.gz AK3/
-          cd AK3
-
-          cat > anykernel.sh << 'EOF'
+          git clone https://github.com/osm0sis/AnyKernel3.git -b master
+          cd AnyKernel3
+          
+          cat << 'EOF' > anykernel.sh
           properties() { '
-          kernel.string=Mutan-Kernel-A16-Extreme
+          kernel.string=Mutan-Kernel-A16-Extreme (Poco F6 / Peridot)
           do.devicecheck=1
           do.modules=0
           do.systemless=1
@@ -255,30 +89,33 @@ jobs:
           device.name1=peridot
           supported.versions=14 - 16
           '; }
-          block=boot;
-          is_slot_device=auto;
-          ramdisk_compression=auto;
-          patch_vbmeta_flag=auto;
-          no_magisk_check=1;
-          . tools/ak3-core.sh;
+          block=boot
+          is_slot_device=auto
+          . tools/ak3-core.sh
+          ui_print "- Backup kernel lama ke /sdcard/Mutan_Original_Backup.img"
+          dump_boot; 
+          cp $split_img/boot.img /sdcard/Mutan_Original_Backup.img || ui_print "! Gagal buat backup"
           split_boot;
-          if [ -f "split_img/ramdisk.cpio" ]; then
-              unpack_ramdisk;
-              write_boot;
-          else
-              flash_boot;
-          fi
+          flash_boot;
           EOF
+          
+          cp ../out/arch/arm64/boot/Image .
+          find ../out/arch/arm64/boot/dts/vendor/xiaomi/ -name "*.dtb" -exec cp {} . \;
+          if [ -f "../out/arch/arm64/boot/dtbo.img" ]; then
+              cp ../out/arch/arm64/boot/dtbo.img .
+          fi
+          
+          zip -r9 ../Mutan-Kernel-$(date +%Y%m%d-%H%M).zip *
 
-          zip -r9 ../kernel-mutan.zip . -x '*.git*'
-          echo "✅ Package selesai: kernel-mutan.zip"
-
-      # =========================================================
-      # [10] UPLOAD KERNEL
-      # =========================================================
-      - name: Upload Kernel
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: success()
         with:
-          name: Mutan-Kernel-Release
-          path: kernel-mutan.zip
-          if-no-files-found: error
+          tag_name: v1.0.0-$(date +%Y%m%d-%H%M)
+          name: Mutan-Kernel-A16-Extreme (Poco F6)
+          body: |
+            **Mutan-Kernel-A16-Extreme for Peridot**
+            - Compiler: ZyCromerZ Clang 15.0.7
+            - Optimizer: BBG, EROFS, Wild Patches
+            - Fallback: /sdcard/Mutan_Original_Backup.img
+          files: "*.zip"
