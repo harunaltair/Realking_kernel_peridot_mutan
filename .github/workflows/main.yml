@@ -38,40 +38,41 @@ jobs:
           export KBUILD_BUILD_USER="lightbulb"
           export KBUILD_BUILD_HOST="Mutan-BuildServer"
 
-          # FIX 1: Hapus referensi KernelSU yang bikin error
+          # 1. Membersihkan sisa-sisa KernelSU agar git tidak error
+          git rm -rf --cached KernelSU-Next || true
           sed -i '/kernelsu/d' drivers/Kconfig
           sed -i '/kernelsu/d' drivers/Makefile
 
-          # 1. Initialize Defconfig (Disesuaikan dengan jalur yang kamu temukan)
-          # Karena file ada di arch/arm64/configs/peridot_defconfig
+          # 2. Initialize Defconfig
           make O=out peridot_defconfig
           
-          # 2. Extreme Optimizer & Compatibility
-          scripts/config --objtree out --enable CONFIG_EROFS_FS
-          scripts/config --objtree out --enable CONFIG_EROFS_FS_ZIP
-          scripts/config --objtree out --enable CONFIG_EROFS_FS_XATTR
-          scripts/config --objtree out --enable CONFIG_TMPFS_XATTR
-          scripts/config --objtree out --enable CONFIG_OVERLAY_FS
-          scripts/config --objtree out --enable CONFIG_ZRAM
-          scripts/config --objtree out --enable CONFIG_ZSMALLOC
-          scripts/config --objtree out --enable CONFIG_PSI
-          scripts/config --objtree out --enable CONFIG_MEMCG
-          scripts/config --objtree out --set-val CONFIG_HZ 300
-          scripts/config --objtree out --enable CONFIG_SCHED_AUTOGROUP
-          scripts/config --objtree out --enable CONFIG_TCP_CONG_BBR
-          scripts/config --objtree out --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
-          scripts/config --objtree out --enable CONFIG_NET_SCH_FQ_CODEL
-          scripts/config --objtree out --enable CONFIG_WIREGUARD
+          # 3. Extreme Optimizer & Compatibility
+          # Kita ganti --objtree dengan --file out/.config
+          scripts/config --file out/.config --enable CONFIG_EROFS_FS
+          scripts/config --file out/.config --enable CONFIG_EROFS_FS_ZIP
+          scripts/config --file out/.config --enable CONFIG_EROFS_FS_XATTR
+          scripts/config --file out/.config --enable CONFIG_TMPFS_XATTR
+          scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
+          scripts/config --file out/.config --enable CONFIG_ZRAM
+          scripts/config --file out/.config --enable CONFIG_ZSMALLOC
+          scripts/config --file out/.config --enable CONFIG_PSI
+          scripts/config --file out/.config --enable CONFIG_MEMCG
+          scripts/config --file out/.config --set-val CONFIG_HZ 300
+          scripts/config --file out/.config --enable CONFIG_SCHED_AUTOGROUP
+          scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
+          scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+          scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
+          scripts/config --file out/.config --enable CONFIG_WIREGUARD
           
-          # Zero Overhead
-          scripts/config --objtree out --disable CONFIG_KASAN
-          scripts/config --objtree out --disable CONFIG_UBSAN
-          scripts/config --objtree out --disable CONFIG_KCSAN
+          # Zero Overhead (Disable Sanitizers)
+          scripts/config --file out/.config --disable CONFIG_KASAN
+          scripts/config --file out/.config --disable CONFIG_UBSAN
+          scripts/config --file out/.config --disable CONFIG_KCSAN
           
-          # 3. Inject Version Info
+          # 4. Inject Version Info
           sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Extreme-1.0.0"/g' out/.config
           
-          # 4. Final Compilation
+          # 5. Final Compilation
           make -j$(nproc --all) O=out \
               CC=clang \
               CLANG_TRIPLE=aarch64-linux-gnu- \
