@@ -43,32 +43,49 @@ jobs:
 
       - name: Prepare Config (AUTO MERGE)
         run: |
-          # Fix KernelSU leftover
+          # =========================
+          # CLEAN (WAJIB & BENAR)
+          # =========================
+          git clean -fdx || true
+          rm -rf out || true
+      
+          # =========================
+          # FIX KERNELSU
+          # =========================
           rm -rf drivers/kernelsu || true
           sed -i '/kernelsu/d' drivers/Kconfig || true
           sed -i '/kernelsu/d' drivers/Makefile || true
-          
-          # Clean source tree (INI YANG KURANG)
-          make mrproper
-          mkdir -p out
-          
+      
+          # =========================
+          # ENV
+          # =========================
           export ARCH=arm64
           export SUBARCH=arm64
-          
-          # Base config
+      
+          mkdir -p out
+      
+          # =========================
+          # BASE CONFIG
+          # =========================
           make O=out peridot_defconfig
-          
-          # Merge HyperOS config
+      
+          # =========================
+          # MERGE CONFIG (DEVICE)
+          # =========================
           scripts/kconfig/merge_config.sh -m \
             out/.config \
             hyperos_defconfig
-          
-          # Merge tweaks
+      
+          # =========================
+          # MERGE TWEAK
+          # =========================
           scripts/kconfig/merge_config.sh -m \
             out/.config \
             my_tweaks.config
-          
-          # Resolve dependency
+      
+          # =========================
+          # RESOLVE DEPENDENCY
+          # =========================
           make O=out olddefconfig
 
       - name: Build Kernel
