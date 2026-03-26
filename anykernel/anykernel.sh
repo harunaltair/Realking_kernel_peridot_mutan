@@ -34,7 +34,7 @@ no_magisk_check=1
 
 kernel_version=$(cat /proc/version | awk -F '-' '{print $1}' | awk '{print $3}')
 
-ui_print "Flashing realking..."
+ui_print "Flashing mutan kernel..."
 ui_print "Kernel version detected:".$kernel_version
 
 # boot install
