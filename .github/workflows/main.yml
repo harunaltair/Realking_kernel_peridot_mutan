@@ -64,15 +64,18 @@ jobs:
 
           echo "KSU_VERSION=$(grep '^KERNELSU_VERSION' drivers/kernelsu/Makefile | cut -d= -f2 | tr -d ' ')" >> $GITHUB_ENV
 
-      - name: Debug Makefile dirty check
-        run: sed -n '665,685p' Makefile
-        
       - name: Prepare Config
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
 
-          # Hapus file/folder yang trigger "source tree is not clean"
+          # DEBUG: cek mana yang ada
+          echo "=== CEK PENYEBAB DIRTY ==="
+          ls -la .config 2>/dev/null && echo ".config ADA" || echo ".config tidak ada"
+          ls -la include/config 2>/dev/null && echo "include/config ADA" || echo "include/config tidak ada"
+          ls -la arch/arm64/include/generated 2>/dev/null && echo "generated ADA" || echo "generated tidak ada"
+          echo "========================="
+
           rm -f .config
           rm -rf include/config
           rm -rf arch/arm64/include/generated
