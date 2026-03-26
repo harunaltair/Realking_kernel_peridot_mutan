@@ -53,10 +53,7 @@ jobs:
       - name: Setup KernelSU Next
         run: |
           git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git -b dev KernelSU-Next
-
-          # Hapus .git supaya tidak dianggap embedded repo
           rm -rf KernelSU-Next/.git
-
           cp -r KernelSU-Next/kernel drivers/kernelsu
 
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
@@ -65,18 +62,11 @@ jobs:
           ls drivers/kernelsu/Kconfig || (echo "KSU FAILED!" && exit 1)
 
           echo "KSU_VERSION=$(grep '^KERNELSU_VERSION' drivers/kernelsu/Makefile | cut -d= -f2 | tr -d ' ')" >> $GITHUB_ENV
-          
+
       - name: Prepare Config
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-
-          # DEBUG: cek mana yang ada
-          echo "=== CEK PENYEBAB DIRTY ==="
-          ls -la .config 2>/dev/null && echo ".config ADA" || echo ".config tidak ada"
-          ls -la include/config 2>/dev/null && echo "include/config ADA" || echo "include/config tidak ada"
-          ls -la arch/arm64/include/generated 2>/dev/null && echo "generated ADA" || echo "generated tidak ada"
-          echo "========================="
 
           rm -f .config
           rm -rf include/config
@@ -91,18 +81,9 @@ jobs:
           scripts/kconfig/merge_config.sh -m out/.config hyperos_defconfig
           scripts/kconfig/merge_config.sh -m out/.config my_tweaks.config
 
-          # DEBUG setelah merge
-          echo "=== SETELAH MERGE ==="
-          ls -la .config 2>/dev/null && echo ".config ADA DI ROOT" || echo ".config tidak ada"
-          ls -la include/config 2>/dev/null && echo "include/config ADA" || echo "include/config tidak ada"
-          ls -la arch/arm64/include/generated 2>/dev/null && echo "generated ADA" || echo "generated tidak ada"
-          echo "====================="
-
           rm -f .config
           rm -rf include/config
           rm -rf arch/arm64/include/generated
-
-          make O=out olddefconfig
 
           make O=out olddefconfig
 
@@ -129,7 +110,6 @@ jobs:
           sed -i 's/kernel.string=.*/kernel.string=Mutan Kernel (Peridot) KSUNext-${{ env.KSU_VERSION }}/g' anykernel.sh
           sed -i 's/device.name1=.*/device.name1=peridot/g' anykernel.sh
 
-          # pastikan kernel ada
           if [ ! -f ../out/arch/arm64/boot/Image.gz ]; then
             echo "Kernel Image.gz not found!"
             exit 1
@@ -137,30 +117,33 @@ jobs:
 
           cp ../out/arch/arm64/boot/Image.gz .
 
-          # dtbo OPTIONAL (jangan dipaksa)
           if [ -f ../out/arch/arm64/boot/dtbo.img ]; then
             cp ../out/arch/arm64/boot/dtbo.img .
-            echo "dtbo.img included"
           else
-            echo "dtbo.img not found, skipping..."
+            echo "Skipping dtbo.img"
           fi
 
-          # dtb OPTIONAL juga (karena kemungkinan sudah ke-embed)
           if [ -d ../out/arch/arm64/boot/dts/ ]; then
             find ../out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} . \;
-            echo "dtb files copied"
-          else
-            echo "No dtb directory, skipping..."
           fi
-          zip -r9 ../MutanKernel-KSUNext-$(date +%Y%m%d-%H%M).zip *
+
+          ZIP_NAME=MutanKernel-KSUNext-$(date +%Y%m%d-%H%M).zip
+          zip -r9 ../$ZIP_NAME *
+
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Set Tag
+        run: echo "TAG_NAME=auto-$(date +%Y%m%d-%H%M)" >> $GITHUB_ENV
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: auto-$(date +%Y%m%d-%H%M)
+          tag_name: ${{ env.TAG_NAME }}
           name: "Mutan Kernel | KSU Next v${{ env.KSU_VERSION }}"
           body: |
             ## Mutan Kernel Auto Build
+
+            🧠 Commit: ${{ github.sha }}
 
             ✅ KernelSU Next v${{ env.KSU_VERSION }}
             ✅ Auto Merge HyperOS Config
@@ -169,4 +152,4 @@ jobs:
 
             ### Device
             - Poco F6 (Peridot)
-          files: "MutanKernel-KSUNext-*.zip"
+          files: ${{ env.ZIP_NAME }}
