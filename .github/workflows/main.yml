@@ -72,7 +72,11 @@ jobs:
           export ARCH=arm64
           export SUBARCH=arm64
 
-          # Beri tahu git bahwa perubahan KSU sudah "diterima"
+          # Hapus file/folder yang trigger "source tree is not clean"
+          rm -f .config
+          rm -rf include/config
+          rm -rf arch/arm64/include/generated
+
           git add -A
           git -c user.email="ci@build" -c user.name="CI" commit -m "ci: inject KSU Next" || true
 
