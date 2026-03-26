@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Dependencies
         run: |
@@ -41,38 +43,27 @@ jobs:
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=5G" >> $GITHUB_ENV
 
-      - name: Prepare Config (AUTO MERGE)
+      - name: Setup KernelSU Next
         run: |
-          # =========================
-          # RESTORE TREE DULU (sebelum apapun)
-          # =========================
-          git checkout -- .
-          git clean -fdx || true
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          echo "KSU_VERSION=$(cat drivers/kernelsu/Makefile | grep '^KERNELSU_VERSION' | cut -d= -f2 | tr -d ' ')" >> $GITHUB_ENV
 
-          # =========================
-          # SEKARANG BARU MRPROPER
-          # =========================
+      - name: Prepare Config
+        run: |
           export ARCH=arm64
           export SUBARCH=arm64
 
-          make mrproper
-
-          # =========================
-          # BARU REMOVE KSU
-          # =========================
-          rm -rf drivers/kernelsu || true
-          sed -i '/kernelsu/Id' drivers/Kconfig || true
-          sed -i '/kernelsu/Id' drivers/Makefile || true
-
-          # =========================
-          # BUILD CONFIG
-          # =========================
           mkdir -p out
 
           make O=out peridot_defconfig
 
-          scripts/kconfig/merge_config.sh -m out/.config hyperos_defconfig
-          scripts/kconfig/merge_config.sh -m out/.config my_tweaks.config
+          scripts/kconfig/merge_config.sh -m \
+            out/.config \
+            hyperos_defconfig
+
+          scripts/kconfig/merge_config.sh -m \
+            out/.config \
+            my_tweaks.config
 
           make O=out olddefconfig
 
@@ -93,25 +84,31 @@ jobs:
 
       - name: Package AnyKernel3
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git
+          git clone https://github.com/osm0sis/AnyKernel3.git --depth=1
           cd AnyKernel3
 
-          sed -i 's/kernel.string=.*/kernel.string=Mutan Kernel Auto (Peridot)/g' anykernel.sh
+          sed -i 's/kernel.string=.*/kernel.string=Mutan Kernel (Peridot) KSUNext-${{ env.KSU_VERSION }}/g' anykernel.sh
           sed -i 's/device.name1=.*/device.name1=peridot/g' anykernel.sh
 
           cp ../out/arch/arm64/boot/Image.gz .
           cp ../out/arch/arm64/boot/dtbo.img .
           find ../out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} . \;
 
-          zip -r9 ../MutanKernel-$(date +%Y%m%d-%H%M).zip *
+          zip -r9 ../MutanKernel-KSUNext-$(date +%Y%m%d-%H%M).zip *
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: auto-$(date +%Y%m%d-%H%M)
-          name: Mutan Kernel Auto Build
+          name: "Mutan Kernel | KSU Next v${{ env.KSU_VERSION }}"
           body: |
+            ## Mutan Kernel Auto Build
+            
+            ✅ KernelSU Next v${{ env.KSU_VERSION }}
             ✅ Auto Merge HyperOS Config
             ✅ Auto Inject Tweaks
             ✅ Balanced Performance Kernel
-          files: "*.zip"
+            
+            ### Device
+            - Poco F6 (Peridot)
+          files: "MutanKernel-KSUNext-*.zip"
