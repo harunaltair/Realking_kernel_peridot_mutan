@@ -119,7 +119,7 @@ jobs:
             LLVM_IAS=1 \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-android- \
-            KCFLAGS="-O2 -pipe"
+            KCFLAGS="-O2 -pipe -fno-stack-protector"
 
       - name: Package AnyKernel3
         run: |
