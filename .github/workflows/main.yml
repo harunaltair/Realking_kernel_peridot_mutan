@@ -91,6 +91,19 @@ jobs:
           scripts/kconfig/merge_config.sh -m out/.config hyperos_defconfig
           scripts/kconfig/merge_config.sh -m out/.config my_tweaks.config
 
+          # DEBUG setelah merge
+          echo "=== SETELAH MERGE ==="
+          ls -la .config 2>/dev/null && echo ".config ADA DI ROOT" || echo ".config tidak ada"
+          ls -la include/config 2>/dev/null && echo "include/config ADA" || echo "include/config tidak ada"
+          ls -la arch/arm64/include/generated 2>/dev/null && echo "generated ADA" || echo "generated tidak ada"
+          echo "====================="
+
+          rm -f .config
+          rm -rf include/config
+          rm -rf arch/arm64/include/generated
+
+          make O=out olddefconfig
+
           make O=out olddefconfig
 
       - name: Build Kernel
