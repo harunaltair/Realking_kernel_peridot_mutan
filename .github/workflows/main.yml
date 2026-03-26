@@ -44,43 +44,22 @@ jobs:
       - name: Prepare Config (AUTO MERGE)
         run: |
           # =========================
-          # CLEAN
+          # CLEAN TOTAL
           # =========================
           git clean -fdx || true
-          rm -rf out || true
+          git checkout -- drivers/Kconfig drivers/Makefile || true
+          rm -rf out drivers/kernelsu || true
 
-          # =========================
-          # FIX KERNELSU
-          # =========================
-          rm -rf drivers/kernelsu || true
-          sed -i '/kernelsu/d' drivers/Kconfig || true
-          sed -i '/kernelsu/d' drivers/Makefile || true
-
-          # =========================
-          # ENV
-          # =========================
           export ARCH=arm64
           export SUBARCH=arm64
 
-          # =========================
-          # MRPROPER (fix "source tree is not clean")
-          # =========================
           make mrproper
-
           mkdir -p out
 
-          # =========================
-          # CONFIG
-          # =========================
           make O=out peridot_defconfig
 
-          scripts/kconfig/merge_config.sh -m \
-            out/.config \
-            hyperos_defconfig
-
-          scripts/kconfig/merge_config.sh -m \
-            out/.config \
-            my_tweaks.config
+          scripts/kconfig/merge_config.sh -m out/.config hyperos_defconfig
+          scripts/kconfig/merge_config.sh -m out/.config my_tweaks.config
 
           make O=out olddefconfig
 
