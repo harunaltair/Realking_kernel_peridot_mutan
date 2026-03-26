@@ -54,7 +54,8 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git -b dev KernelSU-Next
 
-          ln -sf "$(pwd)/KernelSU-Next/kernel" drivers/kernelsu
+          # Copy langsung, JANGAN pakai symlink
+          cp -r KernelSU-Next/kernel drivers/kernelsu
 
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
           echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
@@ -62,23 +63,21 @@ jobs:
           ls drivers/kernelsu/Kconfig || (echo "KSU FAILED!" && exit 1)
 
           echo "KSU_VERSION=$(grep '^KERNELSU_VERSION' drivers/kernelsu/Makefile | cut -d= -f2 | tr -d ' ')" >> $GITHUB_ENV
-
+      
       - name: Prepare Config
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
 
-          mkdir -p out
+          # Beri tahu git bahwa perubahan KSU sudah "diterima"
+          git add -A
+          git -c user.email="ci@build" -c user.name="CI" commit -m "ci: inject KSU Next" || true
 
+          mkdir -p out
           make O=out peridot_defconfig
 
-          scripts/kconfig/merge_config.sh -m \
-            out/.config \
-            hyperos_defconfig
-
-          scripts/kconfig/merge_config.sh -m \
-            out/.config \
-            my_tweaks.config
+          scripts/kconfig/merge_config.sh -m out/.config hyperos_defconfig
+          scripts/kconfig/merge_config.sh -m out/.config my_tweaks.config
 
           make O=out olddefconfig
 
