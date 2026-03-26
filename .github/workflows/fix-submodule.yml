@@ -1,16 +1,6 @@
 name: Fix Orphan Submodules
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'arch/**'
-      - 'drivers/**'
-      - 'include/**'
-      - 'kernel/**'
-      - 'my_tweaks.config'
-      - 'hyperos_defconfig'
-      - '.github/workflows/**'
   workflow_dispatch:
 
 jobs:
