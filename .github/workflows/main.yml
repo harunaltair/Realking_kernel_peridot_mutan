@@ -54,7 +54,9 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git -b dev KernelSU-Next
 
-          # Copy langsung, JANGAN pakai symlink
+          # Hapus .git supaya tidak dianggap embedded repo
+          rm -rf KernelSU-Next/.git
+
           cp -r KernelSU-Next/kernel drivers/kernelsu
 
           echo 'source "drivers/kernelsu/Kconfig"' >> drivers/Kconfig
@@ -63,7 +65,7 @@ jobs:
           ls drivers/kernelsu/Kconfig || (echo "KSU FAILED!" && exit 1)
 
           echo "KSU_VERSION=$(grep '^KERNELSU_VERSION' drivers/kernelsu/Makefile | cut -d= -f2 | tr -d ' ')" >> $GITHUB_ENV
-
+          
       - name: Prepare Config
         run: |
           export ARCH=arm64
