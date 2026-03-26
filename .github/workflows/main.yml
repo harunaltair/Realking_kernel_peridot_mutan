@@ -44,7 +44,7 @@ jobs:
       - name: Prepare Config (AUTO MERGE)
         run: |
           # =========================
-          # CLEAN (WAJIB & BENAR)
+          # CLEAN
           # =========================
           git clean -fdx || true
           rm -rf out || true
@@ -56,6 +56,10 @@ jobs:
           sed -i '/kernelsu/d' drivers/Kconfig || true
           sed -i '/kernelsu/d' drivers/Makefile || true
       
+          # 🔥 FIX: bikin repo clean lagi
+          git add -A
+          git commit -m "fix: kernelsu cleanup" || true
+      
           # =========================
           # ENV
           # =========================
@@ -65,27 +69,18 @@ jobs:
           mkdir -p out
       
           # =========================
-          # BASE CONFIG
+          # CONFIG
           # =========================
           make O=out peridot_defconfig
       
-          # =========================
-          # MERGE CONFIG (DEVICE)
-          # =========================
           scripts/kconfig/merge_config.sh -m \
             out/.config \
             hyperos_defconfig
       
-          # =========================
-          # MERGE TWEAK
-          # =========================
           scripts/kconfig/merge_config.sh -m \
             out/.config \
             my_tweaks.config
       
-          # =========================
-          # RESOLVE DEPENDENCY
-          # =========================
           make O=out olddefconfig
 
       - name: Build Kernel
