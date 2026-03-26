@@ -43,23 +43,28 @@ jobs:
 
       - name: Prepare Config (AUTO MERGE)
         run: |
+          # Fix KernelSU leftover (WAJIB sebelum defconfig)
+          rm -rf drivers/kernelsu || true
+          sed -i '/kernelsu/d' drivers/Kconfig || true
+          sed -i '/kernelsu/d' drivers/Makefile || true
+          
           export ARCH=arm64
           export SUBARCH=arm64
-
+          
           # 1. Base config dari source
           make O=out peridot_defconfig
-
+          
           # 2. Merge config dari HyperOS (REAL DEVICE)
           scripts/kconfig/merge_config.sh -m \
             out/.config \
             hyperos_defconfig
-
-          # 3. Inject tweak config
+          
+          # 3. Inject tweak config (PENTING: ini belum kamu tambahkan)
           scripts/kconfig/merge_config.sh -m \
             out/.config \
             my_tweaks.config
-
-          # 4. Fix dependency
+          
+          # 4. Resolve dependency (WAJIB)
           make O=out olddefconfig
 
       - name: Build Kernel
