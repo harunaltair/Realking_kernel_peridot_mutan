@@ -44,16 +44,29 @@ jobs:
       - name: Prepare Config (AUTO MERGE)
         run: |
           # =========================
-          # CLEAN TOTAL
+          # RESTORE TREE DULU (sebelum apapun)
           # =========================
+          git checkout -- .
           git clean -fdx || true
-          git checkout -- drivers/Kconfig drivers/Makefile || true
-          rm -rf out drivers/kernelsu || true
 
+          # =========================
+          # SEKARANG BARU MRPROPER
+          # =========================
           export ARCH=arm64
           export SUBARCH=arm64
 
           make mrproper
+
+          # =========================
+          # BARU REMOVE KSU
+          # =========================
+          rm -rf drivers/kernelsu || true
+          sed -i '/kernelsu/Id' drivers/Kconfig || true
+          sed -i '/kernelsu/Id' drivers/Makefile || true
+
+          # =========================
+          # BUILD CONFIG
+          # =========================
           mkdir -p out
 
           make O=out peridot_defconfig
