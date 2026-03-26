@@ -1,4 +1,4 @@
-name: Fix Orphan Submodule
+name: Fix Orphan Submodules
 
 on:
   workflow_dispatch:
