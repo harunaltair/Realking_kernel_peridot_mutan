@@ -43,28 +43,31 @@ jobs:
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=5G" >> $GITHUB_ENV
 
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clean KSU References
+        run: |
+          sed -i '/kernelsu/Id' drivers/Kconfig || true
+          sed -i '/kernelsu/Id' drivers/Makefile || true
+          rm -rf drivers/kernelsu || true
+
       - name: Setup KernelSU Next
         run: |
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          echo "KSU_VERSION=$(cat drivers/kernelsu/Makefile | grep '^KERNELSU_VERSION' | cut -d= -f2 | tr -d ' ')" >> $GITHUB_ENV
+          ls drivers/kernelsu/Kconfig || (echo "KSU FAILED to setup!" && exit 1)
+          echo "KSU_VERSION=$(grep '^KERNELSU_VERSION' drivers/kernelsu/Makefile | cut -d= -f2 | tr -d ' ')" >> $GITHUB_ENV
 
       - name: Prepare Config
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-
           mkdir -p out
-
           make O=out peridot_defconfig
-
-          scripts/kconfig/merge_config.sh -m \
-            out/.config \
-            hyperos_defconfig
-
-          scripts/kconfig/merge_config.sh -m \
-            out/.config \
-            my_tweaks.config
-
+          scripts/kconfig/merge_config.sh -m out/.config hyperos_defconfig
+          scripts/kconfig/merge_config.sh -m out/.config my_tweaks.config
           make O=out olddefconfig
 
       - name: Build Kernel
