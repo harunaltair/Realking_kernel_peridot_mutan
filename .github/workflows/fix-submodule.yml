@@ -1,0 +1,32 @@
+name: Fix Orphan Submodule
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Fix Orphan Submodule
+        run: |
+          git rm --cached KernelSU-Next 2>/dev/null || true
+          rm -rf KernelSU-Next
+          rm -f .gitmodules
+          git config --remove-section submodule.KernelSU-Next 2>/dev/null || true
+
+      - name: Commit & Push Fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "fix: remove orphan KernelSU-Next submodule"
+          git push
