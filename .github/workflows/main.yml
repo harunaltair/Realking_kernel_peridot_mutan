@@ -1,8 +1,16 @@
-name: Build Mutan Kernel A16 Extreme (Poco F6)
+name: Mutan Kernel Auto Pipeline (Peridot)
 
 on:
   push:
-    branches: [ main, master, android-16 ]
+    branches: [ main ]
+    paths:
+      - 'arch/**'
+      - 'drivers/**'
+      - 'include/**'
+      - 'kernel/**'
+      - 'my_tweaks.config'
+      - 'hyperos_defconfig'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 jobs:
@@ -10,101 +18,86 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    steps:
-      - name: Checkout Kernel Source
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
-      - name: Install Build Dependencies
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y bc bison build-essential flex git git-lfs zip \
-          libssl-dev libncurses5-dev libncursesw5-dev libelf-dev binutils-aarch64-linux-gnu pahole
+          sudo apt install -y bc bison build-essential flex git curl zip \
+          libssl-dev libncurses-dev libelf-dev pahole ccache
 
-      - name: Setup ZyCromerZ Clang (20.0.0-git)
+      - name: Setup Clang 20
         run: |
-          mkdir clang
-          cd clang
-          # Menggunakan rilis Jan 2025 yang stabil untuk SM8635
+          mkdir clang && cd clang
           curl -LO https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20250129-release/Clang-20.0.0git-20250129.tar.gz
           tar -xf *.tar.gz
           echo "$(pwd)/bin" >> $GITHUB_PATH
 
-      - name: Build Mutan Kernel
+      - name: Setup ccache
+        run: |
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          echo "CCACHE_MAXSIZE=5G" >> $GITHUB_ENV
+
+      - name: Prepare Config (AUTO MERGE)
         run: |
           export ARCH=arm64
           export SUBARCH=arm64
-          export KBUILD_BUILD_USER="lightbulb"
-          export KBUILD_BUILD_HOST="Mutan-BuildServer"
 
-          # 1. Bersihkan sisa-sisa KernelSU agar git tidak error
-          git rm -rf --cached KernelSU-Next || true
-          sed -i '/kernelsu/d' drivers/Kconfig
-          sed -i '/kernelsu/d' drivers/Makefile
-
-          # 2. Initialize Defconfig
+          # 1. Base config dari source
           make O=out peridot_defconfig
-          
-          # 3. Android 16 & HyperOS 3 Essentials (Mahiru Optimized)
-          scripts/config --file out/.config --enable CONFIG_EROFS_FS
-          scripts/config --file out/.config --enable CONFIG_EROFS_FS_ZIP
-          scripts/config --file out/.config --enable CONFIG_EROFS_FS_XATTR
-          scripts/config --file out/.config --enable CONFIG_TMPFS_XATTR
-          scripts/config --file out/.config --enable CONFIG_OVERLAY_FS
-          scripts/config --file out/.config --enable CONFIG_ZRAM
-          scripts/config --file out/.config --enable CONFIG_PSI
-          scripts/config --file out/.config --enable CONFIG_MEMCG
-          scripts/config --file out/.config --set-val CONFIG_HZ 300
-          scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
-          scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
-          
-          # Zero Overhead
-          scripts/config --file out/.config --disable CONFIG_KASAN
-          scripts/config --file out/.config --disable CONFIG_UBSAN
-          scripts/config --file out/.config --disable CONFIG_KCSAN
-          
-          # 4. Inject Version Info
-          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-Mutan-Mahiru-Style"/g' out/.config
-          
-          # 5. Final Compilation (Mahiru Style: One Line Build)
-          # Menggunakan LLVM=1 secara penuh untuk konsistensi toolchain
-          make -j$(nproc --all) O=out \
-              LLVM=1 \
-              LLVM_IAS=1 \
-              CC=clang \
-              CLANG_TRIPLE=aarch64-linux-gnu- \
-              CROSS_COMPILE=aarch64-linux-android- \
-              KCFLAGS="-O2 -pipe -Wno-error" \
-              Image.gz dtbs dtbo.img
 
-      - name: Package with AnyKernel3
+          # 2. Merge config dari HyperOS (REAL DEVICE)
+          scripts/kconfig/merge_config.sh -m \
+            out/.config \
+            hyperos_defconfig
+
+          # 3. Inject tweak config
+          scripts/kconfig/merge_config.sh -m \
+            out/.config \
+            my_tweaks.config
+
+          # 4. Fix dependency
+          make O=out olddefconfig
+
+      - name: Build Kernel
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git -b master
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="Mutan"
+          export KBUILD_BUILD_HOST="AutoPipeline"
+          export CC="ccache clang"
+
+          make -j$(nproc --all) O=out \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-android- \
+            KCFLAGS="-O2 -pipe"
+
+      - name: Package AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git
           cd AnyKernel3
-          
-          # Update anykernel.sh secara otomatis
-          sed -i 's/kernel.string=.*/kernel.string=Mutan-Kernel-A16-Extreme (Poco F6)/g' anykernel.sh
+
+          sed -i 's/kernel.string=.*/kernel.string=Mutan Kernel Auto (Peridot)/g' anykernel.sh
           sed -i 's/device.name1=.*/device.name1=peridot/g' anykernel.sh
-          
-          # Ambil hasil build (Mahiru Style menggunakan Image.gz)
+
           cp ../out/arch/arm64/boot/Image.gz .
           cp ../out/arch/arm64/boot/dtbo.img .
-          find ../out/arch/arm64/boot/dts/vendor/xiaomi/ -name "*.dtb" -exec cp {} . \;
-          
-          # Buat ZIP
-          zip -r9 ../Mutan-Kernel-Peridot-A16-$(date +%Y%m%d-%H%M).zip *
+          find ../out/arch/arm64/boot/dts/ -name "*.dtb" -exec cp {} . \;
 
-      - name: Create GitHub Release
+          zip -r9 ../MutanKernel-$(date +%Y%m%d-%H%M).zip *
+
+      - name: Release
         uses: softprops/action-gh-release@v2
-        if: success()
         with:
-          tag_name: v1.0.0-$(date +%Y%m%d-%H%M)
-          name: Mutan-Kernel-A16-Extreme (Poco F6)
+          tag_name: auto-$(date +%Y%m%d-%H%M)
+          name: Mutan Kernel Auto Build
           body: |
-            **Mutan-Kernel-A16-Extreme (Mahiru Style)**
-            - Device: Poco F6 (Peridot)
-            - Compiler: ZyCromerZ Clang 20.0.0-git
-            - Target: Android 16 / HyperOS 3
-            - Features: EROFS, TCP BBR, -O2 Optimized
+            ✅ Auto Merge HyperOS Config
+            ✅ Auto Inject Tweaks
+            ✅ Balanced Performance Kernel
           files: "*.zip"
