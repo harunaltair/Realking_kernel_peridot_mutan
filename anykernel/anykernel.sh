@@ -4,7 +4,7 @@
 ### AnyKernel setup
 # global properties
 properties() { '
-kernel.string=RealKing Kernel by Rohail(@Rohail33)--Telegram 
+kernel.string=Mutan Kernel (Peridot) KSUNext-
 do.devicecheck=0
 do.modules=0
 do.systemless=0
